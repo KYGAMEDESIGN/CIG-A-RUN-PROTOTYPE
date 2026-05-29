@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#130c09" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="CIG-A-RUN" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>CIG-A-RUN</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="game" aria-label="Cigarette tunnel runner game"></canvas>
+
+      <section id="mobileTouchZones" class="mobile-touch-zones hidden" aria-label="Touch movement zones">
+        <button id="touchZoneLeft" class="mobile-touch-zone left-zone" type="button" aria-label="Hold to move left">
+          <span>Move left</span>
+        </button>
+        <button id="touchZoneRight" class="mobile-touch-zone right-zone" type="button" aria-label="Hold to move right">
+          <span>Move right</span>
+        </button>
+      </section>
+
+      <section class="hud hidden" aria-live="polite">
+        <div>
+          <span class="label">Distance</span>
+          <strong id="distance">0m</strong>
+        </div>
+        <div>
+          <span class="label">Time Open</span>
+          <strong id="sessionTime">00:00</strong>
+        </div>
+        <div>
+          <span class="label">Speed</span>
+          <strong id="speed">1.0x</strong>
+        </div>
+        <div>
+          <span class="label">Extinguished</span>
+          <strong id="extinguished">0</strong>
+        </div>
+        <div>
+          <span class="label">Best</span>
+          <strong id="best">0m</strong>
+        </div>
+        <div class="moisture-stat hidden" aria-hidden="true">
+          <span class="label">Moisture</span>
+          <strong id="moisture">100%</strong>
+        </div>
+      </section>
+
+      <aside id="moistureGauge" class="moisture-gauge hidden" aria-label="Moisture level">
+        <span class="gauge-label">Moisture</span>
+        <div class="moisture-bar" aria-hidden="true">
+          <span id="moistureFill"></span>
+          <span id="moistureBuffFill"></span>
+        </div>
+        <strong id="moistureSide">100%</strong>
+      </aside>
+
+      <section id="touchControls" class="touch-controls hidden" aria-label="Movement controls">
+        <button id="touchLeft" class="touch-button" type="button" aria-label="Move left">&lt;</button>
+        <button id="touchBoost" class="touch-button boost-button" type="button" aria-label="Speed boost">SPEED</button>
+        <button id="touchRight" class="touch-button" type="button" aria-label="Move right">&gt;</button>
+      </section>
+
+      <section id="powerupRoulette" class="powerup-roulette hidden" aria-label="Power-up roulette">
+        <span class="roulette-label">Power-up</span>
+        <div class="roulette-window" aria-hidden="true">
+          <span id="rouletteIcon">?</span>
+        </div>
+        <strong id="powerupStatus">Ready</strong>
+      </section>
+
+      <section id="supportMessage" class="support-message hidden" aria-live="polite"></section>
+
+      <section id="menu" class="overlay">
+        <h1 class="menu-title">CIG-A-RUN</h1>
+        <div class="menu-action">
+          <button id="start" class="play-button" type="button">PRESS TO PLAY!</button>
+          <p class="menu-subtitle">extinguish the tobacco!</p>
+        </div>
+        <nav class="menu-footer" aria-label="Menu options">
+          <button class="mini-menu-button" type="button" aria-label="Volume">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a8 8 0 0 1 0 12"/></svg>
+            <span>Volume</span>
+          </button>
+          <button class="mini-menu-button" type="button" aria-label="Language">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+            <span>Language</span>
+          </button>
+          <button id="tutorialMenu" class="mini-menu-button" type="button" aria-label="Tutorial">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="5"/><path d="M8 12h4"/><path d="M10 10v4"/><circle cx="16.5" cy="11" r=".7"/><circle cx="18.5" cy="13" r=".7"/></svg>
+            <span>Tutorial</span>
+          </button>
+          <button id="viewProgressMenu" class="mini-menu-button" type="button" aria-label="View Symptom Progress">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-4 3 2 4-6"/></svg>
+            <span>View Symptom Progress</span>
+          </button>
+        </nav>
+      </section>
+
+      <section id="tutorial" class="tutorial-overlay hidden" aria-label="Tutorial">
+        <div class="tutorial-card active">
+          <div class="tutorial-diagram controls-diagram" aria-hidden="true">
+            <span>LEFT</span>
+            <button type="button">HOLD</button>
+            <button type="button">RUN</button>
+            <button type="button">HOLD</button>
+            <span>RIGHT</span>
+          </div>
+          <h2>Move Around The Tube</h2>
+          <p>Hold the lower-left or lower-right side of the screen to run around the cigarette wall.</p>
+        </div>
+        <div class="tutorial-card">
+          <div class="tutorial-diagram tar-diagram" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <h2>Tar Pit</h2>
+          <p>Sticky tar slows movement, weakens turning, and makes the runner slippery.</p>
+        </div>
+        <div class="tutorial-card">
+          <div class="tutorial-diagram hand-diagram" aria-hidden="true">
+            <div class="range-zone"></div>
+            <div class="hand-mark"></div>
+          </div>
+          <h2>Nicotine Hand</h2>
+          <p>The stained range marker shows where the hand can bend, grab, and crush.</p>
+        </div>
+        <div class="tutorial-card">
+          <div class="tutorial-diagram fire-diagram" aria-hidden="true">
+            <div class="water-beam"></div>
+            <div class="fire-pile"></div>
+          </div>
+          <h2>Burning Tobacco</h2>
+          <p>Enter spray range to auto-aim water and extinguish the highlighted pile.</p>
+        </div>
+        <div class="tutorial-card">
+          <div class="tutorial-diagram moisture-diagram" aria-hidden="true">
+            <div class="pickup-drop"></div>
+            <div class="water-pool-mark"></div>
+            <div class="mini-moisture"><span></span></div>
+          </div>
+          <h2>Moisture</h2>
+          <p>Collect wide water droplets or run through water pools to refill moisture.</p>
+        </div>
+        <div class="tutorial-card">
+          <div class="tutorial-diagram ash-diagram" aria-hidden="true">
+            <div class="ash-trail"></div>
+            <div class="ash-rock"></div>
+          </div>
+          <h2>Ash Asteroids</h2>
+          <p>Dodge hot cigarette ash as it flies toward the runner through the tube.</p>
+        </div>
+        <div class="tutorial-controls">
+          <div id="tutorialDots" class="tutorial-dots" aria-hidden="true"></div>
+          <div class="tutorial-action-stack">
+            <button id="tutorialNext" class="tutorial-next" type="button">Next</button>
+            <button id="tutorialSkip" class="tutorial-skip" type="button">Tap to skip tutorial</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="gameOver" class="overlay hidden">
+        <div class="results-panel">
+          <div class="results-header">
+            <h2 class="result-title">WELL DONE!</h2>
+            <p id="finalScore" class="final-score">0m</p>
+          </div>
+          <p class="copy" id="resultLine">You finished a run.</p>
+          <dl class="score-grid" id="scoreStats">
+            <div>
+              <dt>Distance</dt>
+              <dd id="statDistance">0m</dd>
+            </div>
+            <div>
+              <dt>Time Open</dt>
+              <dd id="statOpenTime">00:00</dd>
+            </div>
+            <div>
+              <dt>Extinguished</dt>
+              <dd id="statExtinguished">0</dd>
+            </div>
+            <div>
+              <dt>Best</dt>
+              <dd id="statBest">0m</dd>
+            </div>
+          </dl>
+
+          <section id="surveySection" class="survey-section" aria-label="Post-run symptom check-in">
+            <div class="survey-incentive">
+              <h3>Short Check-In</h3>
+            </div>
+
+            <form id="symptomSurveyForm" class="symptom-survey">
+              <div class="survey-slider">
+                <label for="symptomCraving">How strong is your urge to smoke right now?</label>
+                <div class="survey-row">
+                  <span>0</span>
+                  <input id="symptomCraving" name="craving" type="range" min="0" max="10" step="1" value="0" />
+                  <span>10</span>
+                  <strong id="symptomCravingValue">0</strong>
+                </div>
+                <p>0 = no urge, 10 = unbearable urge</p>
+              </div>
+
+              <div class="survey-slider">
+                <label for="symptomStress">How stressed or irritable do you feel right now?</label>
+                <div class="survey-row">
+                  <span>0</span>
+                  <input id="symptomStress" name="stress" type="range" min="0" max="10" step="1" value="0" />
+                  <span>10</span>
+                  <strong id="symptomStressValue">0</strong>
+                </div>
+                <p>0 = calm, 10 = extremely stressed/irritable</p>
+              </div>
+
+              <div class="survey-slider">
+                <label for="symptomConcentration">How hard is it to concentrate right now?</label>
+                <div class="survey-row">
+                  <span>0</span>
+                  <input id="symptomConcentration" name="concentration" type="range" min="0" max="10" step="1" value="0" />
+                  <span>10</span>
+                  <strong id="symptomConcentrationValue">0</strong>
+                </div>
+                <p>0 = easy to focus, 10 = very hard to focus</p>
+              </div>
+
+              <div class="survey-slider">
+                <label for="symptomRestlessness">How restless do you feel right now?</label>
+                <div class="survey-row">
+                  <span>0</span>
+                  <input id="symptomRestlessness" name="restlessness" type="range" min="0" max="10" step="1" value="0" />
+                  <span>10</span>
+                  <strong id="symptomRestlessnessValue">0</strong>
+                </div>
+                <p>0 = still/calm, 10 = extremely restless</p>
+              </div>
+
+              <div class="survey-slider">
+                <label for="symptomFatigue">How tired do you feel from trying not to smoke?</label>
+                <div class="survey-row">
+                  <span>0</span>
+                  <input id="symptomFatigue" name="fatigue" type="range" min="0" max="10" step="1" value="0" />
+                  <span>10</span>
+                  <strong id="symptomFatigueValue">0</strong>
+                </div>
+                <p>0 = not tired, 10 = exhausted</p>
+              </div>
+
+              <fieldset class="helped-field">
+                <legend>Did this run help you get through the craving?</legend>
+                <label><input type="radio" name="helped" value="yes" /> Yes</label>
+                <label><input type="radio" name="helped" value="a_little" checked /> A little</label>
+                <label><input type="radio" name="helped" value="no" /> No</label>
+              </fieldset>
+
+              <div class="survey-actions">
+                <button id="submitSurvey" type="submit">CLAIM STARTING BUFF</button>
+                <button id="skipSurvey" type="button">Skip For Now</button>
+              </div>
+
+              <div class="survey-footer-copy">
+                <p>Complete a short check-in to unlock your next-run support buff.</p>
+                <p>Your answers help the game adapt to your craving and withdrawal symptoms.</p>
+              </div>
+            </form>
+
+            <section id="nextBuffPanel" class="next-buff-panel hidden" aria-live="polite">
+              <h3>Next Run Support Buff Unlocked</h3>
+              <div class="buff-roulette-stage" aria-hidden="true">
+                <div id="nextBuffBox" class="buff-prize-box"><span>?</span></div>
+                <div id="nextBuffRoulette" class="next-buff-roulette">ROLLING</div>
+              </div>
+              <p id="nextBuffHint" class="next-buff-hint">Support buff lasts for the first 30 seconds of your next run.</p>
+              <ul id="nextBuffList"></ul>
+            </section>
+          </section>
+
+          <p class="played-at" id="playedAt">--/--/----, --:--</p>
+          <p class="share-gp">Screenshot and share to your GP!</p>
+          <button id="viewProgressResults" type="button">View Symptom Progress</button>
+          <button id="restart" type="button">RUN AGAIN</button>
+        </div>
+      </section>
+
+      <section id="progressOverlay" class="progress-overlay hidden" aria-label="Symptom progress">
+        <div class="progress-panel">
+          <button id="closeProgress" class="progress-close" type="button" aria-label="Close symptom progress">Close</button>
+          <h2>Symptom Progress</h2>
+          <div class="progress-controls" aria-label="Progress time range">
+            <button class="progress-range-button" type="button" data-progress-range="week">Show Data Over Week</button>
+            <button class="progress-range-button" type="button" data-progress-range="month">Show Data Over Months</button>
+            <button class="progress-range-button active" type="button" data-progress-range="year">Show Data Over Years</button>
+            <button id="resetStatistics" class="reset-statistics-button" type="button">Reset Statistics</button>
+          </div>
+          <div id="progressSummary" class="progress-summary"></div>
+          <div id="progressInterpretations" class="progress-interpretations" aria-live="polite"></div>
+          <canvas id="symptomChart" width="900" height="420" aria-label="Line chart of symptom scores over time"></canvas>
+          <div id="chartLegend" class="chart-legend" aria-hidden="true"></div>
+          <div id="progressSessions" class="progress-sessions" aria-live="polite"></div>
+          <p class="progress-disclaimer">This summary is for personal reflection and optional discussion with a healthcare professional. It is not a diagnostic assessment.</p>
+          <div class="progress-actions">
+            <button id="screenshotProgress" type="button">Screenshot for GP</button>
+          </div>
+          <div id="resetStatsModal" class="reset-stats-modal hidden" role="dialog" aria-modal="true" aria-labelledby="resetStatsTitle">
+            <div class="reset-stats-dialog">
+              <h3 id="resetStatsTitle">Reset Statistics</h3>
+              <p>Are you sure you would like to delete these statistics? Type YES in the box below to confirm.</p>
+              <input id="resetStatsConfirmInput" type="text" autocomplete="off" spellcheck="false" aria-label="Type YES to confirm deleting statistics" />
+              <div class="reset-stats-actions">
+                <button id="cancelResetStats" type="button">Cancel</button>
+                <button id="confirmResetStats" type="button" disabled>Delete Statistics</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="vendor/three.min.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>
