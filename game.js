@@ -21,7 +21,6 @@ const powerupRoulette = document.querySelector("#powerupRoulette");
 const rouletteIconEl = document.querySelector("#rouletteIcon");
 const powerupStatusEl = document.querySelector("#powerupStatus");
 const supportMessageEl = document.querySelector("#supportMessage");
-const audioUnlockButton = document.querySelector("#audioUnlockButton");
 const menu = document.querySelector("#menu");
 const tutorial = document.querySelector("#tutorial");
 const tutorialCards = Array.from(document.querySelectorAll(".tutorial-card"));
@@ -275,9 +274,8 @@ let musicTimer = null;
 let musicStep = 0;
 let musicPhraseIndex = 0;
 let audioMuted = false;
-let audioReady = false;
 let audioUnlockPromise = null;
-let lastAudioUnlockPressAt = -999;
+let lastDirectAudioUnlockAt = -999;
 let resultAnimationToken = 0;
 let tutorialIndex = 0;
 let tutorialSeen = false;
@@ -6375,8 +6373,6 @@ function updateSceneVisibility() {
   if (mobileTouchZones) mobileTouchZones.classList.toggle("hidden", state !== "running");
   if (powerupRoulette) powerupRoulette.classList.toggle("hidden", state !== "running");
   if (supportMessageEl && state !== "running") supportMessageEl.classList.add("hidden");
-  if (state === "running") refreshAudioUnlockPrompt();
-  else setAudioUnlockPrompt(false);
   introStage.visible = showingIntro;
   tube.visible = !showingIntro;
   rings.visible = !showingIntro;
@@ -7755,38 +7751,13 @@ function createAudioGraph() {
   masterGain.connect(audioCtx.destination);
 }
 
-function isAudioSupported() {
-  return Boolean(window.AudioContext || window.webkitAudioContext);
-}
-
 function isAudioRunning() {
   return Boolean(audioCtx && audioCtx.state === "running");
 }
 
-function setAudioUnlockPrompt(visible) {
-  if (!audioUnlockButton) return;
-  const shouldShow = Boolean(visible && isAudioSupported() && !audioMuted && !isAudioRunning());
-  audioUnlockButton.classList.toggle("hidden", !shouldShow);
-}
-
-function refreshAudioUnlockPrompt() {
-  setAudioUnlockPrompt(state === "running" && !audioReady);
-}
-
-function noteAudioReady(ready) {
-  audioReady = Boolean(ready && isAudioRunning());
-  refreshAudioUnlockPrompt();
-}
-
 function canPlayAudioNode(targetGain) {
   if (!audioCtx || !targetGain || audioMuted) return false;
-  if (!isAudioRunning()) {
-    audioReady = false;
-    refreshAudioUnlockPrompt();
-    return false;
-  }
-  audioReady = true;
-  return true;
+  return isAudioRunning();
 }
 
 function playAudioUnlockPulse({ audible = false } = {}) {
@@ -7816,7 +7787,6 @@ function unlockAudioContext({ audible = false } = {}) {
   if (!audioCtx) return Promise.resolve(false);
   if (isAudioRunning()) {
     if (audible) playAudioUnlockPulse({ audible: true });
-    noteAudioReady(true);
     return Promise.resolve(true);
   }
   if (!audioUnlockPromise) {
@@ -7829,7 +7799,6 @@ function unlockAudioContext({ audible = false } = {}) {
   }
   return audioUnlockPromise.then((ready) => {
     if (ready) playAudioUnlockPulse({ audible });
-    noteAudioReady(ready);
     return ready;
   });
 }
@@ -7837,7 +7806,6 @@ function unlockAudioContext({ audible = false } = {}) {
 function startAudio({ music = true, audibleUnlock = false } = {}) {
   return unlockAudioContext({ audible: audibleUnlock }).then((ready) => {
     if (ready && music) startMusic();
-    noteAudioReady(ready);
     return ready;
   });
 }
@@ -7929,7 +7897,6 @@ function setAudioMuted(muted) {
   if (volumeButton) {
     volumeButton.classList.toggle("muted", audioMuted);
   }
-  refreshAudioUnlockPrompt();
 }
 
 function playMusicTone(frequency, duration, type = "sine", volume = 0.03, delay = 0) {
@@ -8391,30 +8358,10 @@ function primeAudioFromUserGesture() {
 function primeAudioForPlayIntent() {
   if (audioMuted || isAudioRunning()) return;
   const now = performance.now();
-  if (now - lastAudioUnlockPressAt < 260) return;
-  lastAudioUnlockPressAt = now;
+  if (now - lastDirectAudioUnlockAt < 260) return;
+  lastDirectAudioUnlockAt = now;
   startAudio({ music: state === "running", audibleUnlock: true }).then((ready) => {
     if (ready && state === "running") applyRunAudioProfile();
-  });
-}
-
-function handleAudioUnlockButtonPress(event) {
-  event?.preventDefault?.();
-  event?.stopPropagation?.();
-  const now = performance.now();
-  if (now - lastAudioUnlockPressAt < 260) return;
-  lastAudioUnlockPressAt = now;
-  startAudio({ music: state === "running", audibleUnlock: true }).then((ready) => {
-    noteAudioReady(ready);
-    if (!ready) {
-      setAudioUnlockPrompt(state === "running");
-      return;
-    }
-    if (state === "running") {
-      applyRunAudioProfile();
-      showSupportMessage("Sound on", 1.6);
-    }
-    playButtonSound();
   });
 }
 
@@ -8454,11 +8401,6 @@ restartButton.addEventListener("pointerdown", primeAudioForPlayIntent, { passive
 restartButton.addEventListener("touchstart", primeAudioForPlayIntent, { passive: true });
 startButton.addEventListener("click", handlePlayRequest);
 restartButton.addEventListener("click", startRun);
-if (audioUnlockButton) {
-  audioUnlockButton.addEventListener("pointerdown", handleAudioUnlockButtonPress);
-  audioUnlockButton.addEventListener("touchstart", handleAudioUnlockButtonPress, { passive: false });
-  audioUnlockButton.addEventListener("click", handleAudioUnlockButtonPress);
-}
 for (const { key } of SYMPTOM_DEFINITIONS) {
   symptomControls[key]?.input?.addEventListener("input", updateSymptomSurveyValues);
 }

@@ -491,57 +491,6 @@ button:focus-visible {
   animation: supportMessagePop 0.62s ease-out;
 }
 
-.audio-unlock-button {
-  position: absolute;
-  left: 50%;
-  bottom: calc(96px + var(--safe-bottom));
-  z-index: 30;
-  min-width: 188px;
-  min-height: 54px;
-  padding: 12px 22px;
-  border: 3px solid rgba(20, 17, 14, 0.92);
-  border-radius: 8px;
-  background: rgba(255, 228, 63, 0.94);
-  color: #14110e;
-  font-family: "Bradley Hand", "Marker Felt", "Comic Sans MS", "Chalkboard SE", cursive;
-  font-size: clamp(18px, 4.6vw, 28px);
-  font-weight: 900;
-  line-height: 1;
-  text-transform: uppercase;
-  transform: translateX(-50%) rotate(-1deg);
-  box-shadow:
-    0 0 28px rgba(255, 219, 49, 0.78),
-    0 8px 0 rgba(20, 17, 14, 0.16);
-  pointer-events: auto;
-  touch-action: manipulation;
-  animation: audioUnlockPulse 1.05s ease-in-out infinite;
-}
-
-.audio-unlock-button:hover,
-.audio-unlock-button:focus-visible,
-.audio-unlock-button:active {
-  background: rgba(255, 238, 96, 0.98);
-  color: #14110e;
-  outline: 2px dashed #14110e;
-  outline-offset: 5px;
-  transform: translateX(-50%) rotate(-1deg) scale(1.03);
-}
-
-.audio-unlock-button.hidden {
-  display: none;
-}
-
-@keyframes audioUnlockPulse {
-  0%,
-  100% {
-    transform: translateX(-50%) rotate(-1deg) scale(1);
-  }
-
-  50% {
-    transform: translateX(-50%) rotate(-1deg) scale(1.07);
-  }
-}
-
 @keyframes supportMessagePop {
   0% {
     transform: translateX(-50%) translateY(-8px) scale(0.96);
