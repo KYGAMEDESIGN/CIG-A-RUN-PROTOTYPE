@@ -21,6 +21,7 @@ const powerupRoulette = document.querySelector("#powerupRoulette");
 const rouletteIconEl = document.querySelector("#rouletteIcon");
 const powerupStatusEl = document.querySelector("#powerupStatus");
 const supportMessageEl = document.querySelector("#supportMessage");
+const audioUnlockButton = document.querySelector("#audioUnlockButton");
 const menu = document.querySelector("#menu");
 const tutorial = document.querySelector("#tutorial");
 const tutorialCards = Array.from(document.querySelectorAll(".tutorial-card"));
@@ -274,7 +275,9 @@ let musicTimer = null;
 let musicStep = 0;
 let musicPhraseIndex = 0;
 let audioMuted = false;
+let audioReady = false;
 let audioUnlockPromise = null;
+let lastAudioUnlockPressAt = -999;
 let resultAnimationToken = 0;
 let tutorialIndex = 0;
 let tutorialSeen = false;
@@ -4665,7 +4668,7 @@ function startRun() {
     : 0;
   currentRunNumber += 1;
   localStorage.setItem(RUN_NUMBER_KEY, String(currentRunNumber));
-  startAudio({ music: true }).then((ready) => {
+  startAudio({ music: true, audibleUnlock: true }).then((ready) => {
     if (!ready) return;
     applyRunAudioProfile();
     playButtonSound();
@@ -6048,7 +6051,7 @@ function showTutorial() {
     startRun();
     return;
   }
-  startAudio({ music: false }).then((ready) => {
+  startAudio({ music: false, audibleUnlock: true }).then((ready) => {
     if (ready) playButtonSound();
   });
   menu.classList.add("hidden");
@@ -6059,7 +6062,7 @@ function showTutorial() {
 }
 
 function advanceTutorial() {
-  startAudio({ music: false }).then((ready) => {
+  startAudio({ music: false, audibleUnlock: true }).then((ready) => {
     if (ready) playButtonSound();
   });
   if (tutorialIndex >= tutorialCards.length - 1) {
@@ -6372,6 +6375,8 @@ function updateSceneVisibility() {
   if (mobileTouchZones) mobileTouchZones.classList.toggle("hidden", state !== "running");
   if (powerupRoulette) powerupRoulette.classList.toggle("hidden", state !== "running");
   if (supportMessageEl && state !== "running") supportMessageEl.classList.add("hidden");
+  if (state === "running") refreshAudioUnlockPrompt();
+  else setAudioUnlockPrompt(false);
   introStage.visible = showingIntro;
   tube.visible = !showingIntro;
   rings.visible = !showingIntro;
@@ -7750,44 +7755,89 @@ function createAudioGraph() {
   masterGain.connect(audioCtx.destination);
 }
 
-function playAudioUnlockPulse() {
+function isAudioSupported() {
+  return Boolean(window.AudioContext || window.webkitAudioContext);
+}
+
+function isAudioRunning() {
+  return Boolean(audioCtx && audioCtx.state === "running");
+}
+
+function setAudioUnlockPrompt(visible) {
+  if (!audioUnlockButton) return;
+  const shouldShow = Boolean(visible && isAudioSupported() && !audioMuted && !isAudioRunning());
+  audioUnlockButton.classList.toggle("hidden", !shouldShow);
+}
+
+function refreshAudioUnlockPrompt() {
+  setAudioUnlockPrompt(state === "running" && !audioReady);
+}
+
+function noteAudioReady(ready) {
+  audioReady = Boolean(ready && isAudioRunning());
+  refreshAudioUnlockPrompt();
+}
+
+function canPlayAudioNode(targetGain) {
+  if (!audioCtx || !targetGain || audioMuted) return false;
+  if (!isAudioRunning()) {
+    audioReady = false;
+    refreshAudioUnlockPrompt();
+    return false;
+  }
+  audioReady = true;
+  return true;
+}
+
+function playAudioUnlockPulse({ audible = false } = {}) {
   if (!audioCtx) return;
   try {
     const startAt = audioCtx.currentTime;
     const oscillator = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(440, startAt);
-    gain.gain.setValueAtTime(0.00001, startAt);
-    gain.gain.exponentialRampToValueAtTime(0.000001, startAt + 0.035);
+    const peak = audible ? 0.045 : 0.003;
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(660, startAt);
+    oscillator.frequency.exponentialRampToValueAtTime(880, startAt + 0.055);
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(peak, startAt + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.085);
     oscillator.connect(gain);
     gain.connect(audioCtx.destination);
     oscillator.start(startAt);
-    oscillator.stop(startAt + 0.04);
+    oscillator.stop(startAt + 0.095);
   } catch (error) {
     // Some browsers throw if a previous gesture already unlocked audio; this is harmless.
   }
 }
 
-function unlockAudioContext() {
+function unlockAudioContext({ audible = false } = {}) {
   createAudioGraph();
   if (!audioCtx) return Promise.resolve(false);
-  playAudioUnlockPulse();
-  if (audioCtx.state === "running") return Promise.resolve(true);
+  if (isAudioRunning()) {
+    if (audible) playAudioUnlockPulse({ audible: true });
+    noteAudioReady(true);
+    return Promise.resolve(true);
+  }
   if (!audioUnlockPromise) {
     audioUnlockPromise = audioCtx.resume()
-      .then(() => audioCtx.state === "running")
+      .then(() => isAudioRunning())
       .catch(() => false)
       .finally(() => {
         audioUnlockPromise = null;
       });
   }
-  return audioUnlockPromise;
+  return audioUnlockPromise.then((ready) => {
+    if (ready) playAudioUnlockPulse({ audible });
+    noteAudioReady(ready);
+    return ready;
+  });
 }
 
-function startAudio({ music = true } = {}) {
-  return unlockAudioContext().then((ready) => {
+function startAudio({ music = true, audibleUnlock = false } = {}) {
+  return unlockAudioContext({ audible: audibleUnlock }).then((ready) => {
     if (ready && music) startMusic();
+    noteAudioReady(ready);
     return ready;
   });
 }
@@ -7879,10 +7929,11 @@ function setAudioMuted(muted) {
   if (volumeButton) {
     volumeButton.classList.toggle("muted", audioMuted);
   }
+  refreshAudioUnlockPrompt();
 }
 
 function playMusicTone(frequency, duration, type = "sine", volume = 0.03, delay = 0) {
-  if (!audioCtx || !musicGain || audioMuted) return;
+  if (!canPlayAudioNode(musicGain)) return;
   const startAt = audioCtx.currentTime + delay;
   const oscillator = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -7898,7 +7949,7 @@ function playMusicTone(frequency, duration, type = "sine", volume = 0.03, delay 
 }
 
 function playMusicNoise(duration = 0.02, volume = 0.006, delay = 0) {
-  if (!audioCtx || !musicGain || audioMuted) return;
+  if (!canPlayAudioNode(musicGain)) return;
   const sampleRate = audioCtx.sampleRate;
   const buffer = audioCtx.createBuffer(1, Math.floor(sampleRate * duration), sampleRate);
   const data = buffer.getChannelData(0);
@@ -7922,7 +7973,7 @@ function playMusicNoise(duration = 0.02, volume = 0.006, delay = 0) {
 }
 
 function playTone(frequency, duration, type = "sine", volume = 0.12, delay = 0) {
-  if (!audioCtx || !sfxGain || audioMuted) return;
+  if (!canPlayAudioNode(sfxGain)) return;
   const startAt = audioCtx.currentTime + delay;
   const oscillator = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -7938,7 +7989,7 @@ function playTone(frequency, duration, type = "sine", volume = 0.12, delay = 0) 
 }
 
 function playNoise(duration = 0.18, volume = 0.12, delay = 0) {
-  if (!audioCtx || !sfxGain || audioMuted) return;
+  if (!canPlayAudioNode(sfxGain)) return;
   const sampleRate = audioCtx.sampleRate;
   const buffer = audioCtx.createBuffer(1, Math.floor(sampleRate * duration), sampleRate);
   const data = buffer.getChannelData(0);
@@ -7965,7 +8016,7 @@ function playFilteredNoise({
   endFrequency = frequency,
   q = 1.1,
 } = {}) {
-  if (!audioCtx || !sfxGain || audioMuted) return;
+  if (!canPlayAudioNode(sfxGain)) return;
   const sampleRate = audioCtx.sampleRate;
   const buffer = audioCtx.createBuffer(1, Math.floor(sampleRate * duration), sampleRate);
   const data = buffer.getChannelData(0);
@@ -7994,7 +8045,7 @@ function playFilteredNoise({
 }
 
 function playToneSweep(frequency, endFrequency, duration, type = "sine", volume = 0.08, delay = 0) {
-  if (!audioCtx || !sfxGain || audioMuted) return;
+  if (!canPlayAudioNode(sfxGain)) return;
   const startAt = audioCtx.currentTime + delay;
   const endAt = startAt + duration;
   const oscillator = audioCtx.createOscillator();
@@ -8331,8 +8382,40 @@ function stopAllTouchMovement() {
 }
 
 function primeAudioFromUserGesture() {
-  if (audioCtx?.state === "running") return;
-  startAudio({ music: false });
+  if (audioMuted || isAudioRunning()) return;
+  startAudio({ music: state === "running", audibleUnlock: false }).then((ready) => {
+    if (ready && state === "running") applyRunAudioProfile();
+  });
+}
+
+function primeAudioForPlayIntent() {
+  if (audioMuted || isAudioRunning()) return;
+  const now = performance.now();
+  if (now - lastAudioUnlockPressAt < 260) return;
+  lastAudioUnlockPressAt = now;
+  startAudio({ music: state === "running", audibleUnlock: true }).then((ready) => {
+    if (ready && state === "running") applyRunAudioProfile();
+  });
+}
+
+function handleAudioUnlockButtonPress(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  const now = performance.now();
+  if (now - lastAudioUnlockPressAt < 260) return;
+  lastAudioUnlockPressAt = now;
+  startAudio({ music: state === "running", audibleUnlock: true }).then((ready) => {
+    noteAudioReady(ready);
+    if (!ready) {
+      setAudioUnlockPrompt(state === "running");
+      return;
+    }
+    if (state === "running") {
+      applyRunAudioProfile();
+      showSupportMessage("Sound on", 1.6);
+    }
+    playButtonSound();
+  });
 }
 
 window.addEventListener("resize", resize);
@@ -8340,6 +8423,7 @@ window.visualViewport?.addEventListener("resize", resize);
 window.visualViewport?.addEventListener("scroll", resize);
 window.addEventListener("orientationchange", () => window.setTimeout(resize, 80));
 window.addEventListener("pointerdown", primeAudioFromUserGesture, { passive: true });
+window.addEventListener("touchstart", primeAudioFromUserGesture, { passive: true });
 window.addEventListener("touchend", primeAudioFromUserGesture, { passive: true });
 window.addEventListener("keydown", (event) => {
   if ((event.code === "Space" || event.code === "Enter") && (state === "menu" || state === "over")) {
@@ -8364,8 +8448,17 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) stopAllTouchMovement();
 });
 
+startButton.addEventListener("pointerdown", primeAudioForPlayIntent, { passive: true });
+startButton.addEventListener("touchstart", primeAudioForPlayIntent, { passive: true });
+restartButton.addEventListener("pointerdown", primeAudioForPlayIntent, { passive: true });
+restartButton.addEventListener("touchstart", primeAudioForPlayIntent, { passive: true });
 startButton.addEventListener("click", handlePlayRequest);
 restartButton.addEventListener("click", startRun);
+if (audioUnlockButton) {
+  audioUnlockButton.addEventListener("pointerdown", handleAudioUnlockButtonPress);
+  audioUnlockButton.addEventListener("touchstart", handleAudioUnlockButtonPress, { passive: false });
+  audioUnlockButton.addEventListener("click", handleAudioUnlockButtonPress);
+}
 for (const { key } of SYMPTOM_DEFINITIONS) {
   symptomControls[key]?.input?.addEventListener("input", updateSymptomSurveyValues);
 }
@@ -8476,7 +8569,7 @@ bindHoldButton(
 );
 if (volumeButton) {
   volumeButton.addEventListener("click", () => {
-    startAudio({ music: state === "running" }).then(() => {
+    startAudio({ music: state === "running", audibleUnlock: true }).then(() => {
       setAudioMuted(!audioMuted);
       playButtonSound();
     });
