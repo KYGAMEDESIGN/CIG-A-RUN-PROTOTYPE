@@ -274,6 +274,7 @@ let musicTimer = null;
 let musicStep = 0;
 let musicPhraseIndex = 0;
 let audioMuted = false;
+let audioUnlockPromise = null;
 let resultAnimationToken = 0;
 let tutorialIndex = 0;
 let tutorialSeen = false;
@@ -4664,9 +4665,11 @@ function startRun() {
     : 0;
   currentRunNumber += 1;
   localStorage.setItem(RUN_NUMBER_KEY, String(currentRunNumber));
-  startAudio();
-  applyRunAudioProfile();
-  playButtonSound();
+  startAudio({ music: true }).then((ready) => {
+    if (!ready) return;
+    applyRunAudioProfile();
+    playButtonSound();
+  });
   state = "running";
   grabScene = null;
   endCameraFreeze = null;
@@ -6045,8 +6048,9 @@ function showTutorial() {
     startRun();
     return;
   }
-  startAudio();
-  playButtonSound();
+  startAudio({ music: false }).then((ready) => {
+    if (ready) playButtonSound();
+  });
   menu.classList.add("hidden");
   gameOver.classList.add("hidden");
   tutorial.classList.remove("hidden");
@@ -6055,7 +6059,9 @@ function showTutorial() {
 }
 
 function advanceTutorial() {
-  playButtonSound();
+  startAudio({ music: false }).then((ready) => {
+    if (ready) playButtonSound();
+  });
   if (tutorialIndex >= tutorialCards.length - 1) {
     tutorialSeen = true;
     startRun();
@@ -7729,24 +7735,61 @@ function tick(time) {
   renderer.render(scene, camera);
 }
 
-function startAudio() {
+function createAudioGraph() {
   if (!window.AudioContext && !window.webkitAudioContext) return;
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    masterGain = audioCtx.createGain();
-    musicGain = audioCtx.createGain();
-    sfxGain = audioCtx.createGain();
-    masterGain.gain.value = audioMuted ? 0 : 0.78;
-    musicGain.gain.value = 0.32;
-    sfxGain.gain.value = 0.62;
-    musicGain.connect(masterGain);
-    sfxGain.connect(masterGain);
-    masterGain.connect(audioCtx.destination);
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  musicGain = audioCtx.createGain();
+  sfxGain = audioCtx.createGain();
+  masterGain.gain.value = audioMuted ? 0 : 0.78;
+  musicGain.gain.value = 0.32;
+  sfxGain.gain.value = 0.62;
+  musicGain.connect(masterGain);
+  sfxGain.connect(masterGain);
+  masterGain.connect(audioCtx.destination);
+}
+
+function playAudioUnlockPulse() {
+  if (!audioCtx) return;
+  try {
+    const startAt = audioCtx.currentTime;
+    const oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(440, startAt);
+    gain.gain.setValueAtTime(0.00001, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.000001, startAt + 0.035);
+    oscillator.connect(gain);
+    gain.connect(audioCtx.destination);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + 0.04);
+  } catch (error) {
+    // Some browsers throw if a previous gesture already unlocked audio; this is harmless.
   }
-  if (audioCtx.state === "suspended") {
-    audioCtx.resume();
+}
+
+function unlockAudioContext() {
+  createAudioGraph();
+  if (!audioCtx) return Promise.resolve(false);
+  playAudioUnlockPulse();
+  if (audioCtx.state === "running") return Promise.resolve(true);
+  if (!audioUnlockPromise) {
+    audioUnlockPromise = audioCtx.resume()
+      .then(() => audioCtx.state === "running")
+      .catch(() => false)
+      .finally(() => {
+        audioUnlockPromise = null;
+      });
   }
-  startMusic();
+  return audioUnlockPromise;
+}
+
+function startAudio({ music = true } = {}) {
+  return unlockAudioContext().then((ready) => {
+    if (ready && music) startMusic();
+    return ready;
+  });
 }
 
 function startMusic() {
@@ -8287,10 +8330,17 @@ function stopAllTouchMovement() {
   setTouchButtonActive(touchBoostButton, false);
 }
 
+function primeAudioFromUserGesture() {
+  if (audioCtx?.state === "running") return;
+  startAudio({ music: false });
+}
+
 window.addEventListener("resize", resize);
 window.visualViewport?.addEventListener("resize", resize);
 window.visualViewport?.addEventListener("scroll", resize);
 window.addEventListener("orientationchange", () => window.setTimeout(resize, 80));
+window.addEventListener("pointerdown", primeAudioFromUserGesture, { passive: true });
+window.addEventListener("touchend", primeAudioFromUserGesture, { passive: true });
 window.addEventListener("keydown", (event) => {
   if ((event.code === "Space" || event.code === "Enter") && (state === "menu" || state === "over")) {
     event.preventDefault();
@@ -8426,9 +8476,10 @@ bindHoldButton(
 );
 if (volumeButton) {
   volumeButton.addEventListener("click", () => {
-    startAudio();
-    setAudioMuted(!audioMuted);
-    playButtonSound();
+    startAudio({ music: state === "running" }).then(() => {
+      setAudioMuted(!audioMuted);
+      playButtonSound();
+    });
   });
 }
 if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {

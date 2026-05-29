@@ -285,16 +285,31 @@ button:focus-visible {
 }
 
 .mobile-touch-zone {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   height: 100%;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
+  color: transparent;
   box-shadow: none;
   cursor: default;
+  outline: 0;
   touch-action: none;
   -webkit-touch-callout: none;
+}
+
+.mobile-touch-zone:hover,
+.mobile-touch-zone:focus,
+.mobile-touch-zone:focus-visible,
+.mobile-touch-zone:active {
+  background: transparent;
+  color: transparent;
+  outline: 0;
+  box-shadow: none;
+  transform: none;
 }
 
 .mobile-touch-zone span {
@@ -308,7 +323,7 @@ button:focus-visible {
 
 .mobile-touch-zones.pressing-left .left-zone,
 .mobile-touch-zones.pressing-right .right-zone {
-  background: rgba(91, 226, 255, 0.035);
+  background: transparent;
 }
 
 .touch-controls {
