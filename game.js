@@ -32,7 +32,8 @@ const finalScore = document.querySelector("#finalScore");
 const resultLine = document.querySelector("#resultLine");
 const startButton = document.querySelector("#start");
 const restartButton = document.querySelector("#restart");
-const volumeButton = document.querySelector("[aria-label='Volume']");
+const volumeButton = document.querySelector("#volumeMenu");
+const volumeButtonLabel = volumeButton?.querySelector("span");
 const controlsButton = document.querySelector("#tutorialMenu");
 const statDistanceEl = document.querySelector("#statDistance");
 const statOpenTimeEl = document.querySelector("#statOpenTime");
@@ -4666,11 +4667,7 @@ function startRun() {
     : 0;
   currentRunNumber += 1;
   localStorage.setItem(RUN_NUMBER_KEY, String(currentRunNumber));
-  startAudio({ music: true, audibleUnlock: true }).then((ready) => {
-    if (!ready) return;
-    applyRunAudioProfile();
-    playButtonSound();
-  });
+  enableGameAudio({ music: true, audibleUnlock: true, feedback: true });
   state = "running";
   grabScene = null;
   endCameraFreeze = null;
@@ -6049,9 +6046,7 @@ function showTutorial() {
     startRun();
     return;
   }
-  startAudio({ music: false, audibleUnlock: true }).then((ready) => {
-    if (ready) playButtonSound();
-  });
+  enableGameAudio({ music: false, audibleUnlock: true, feedback: true });
   menu.classList.add("hidden");
   gameOver.classList.add("hidden");
   tutorial.classList.remove("hidden");
@@ -6060,9 +6055,7 @@ function showTutorial() {
 }
 
 function advanceTutorial() {
-  startAudio({ music: false, audibleUnlock: true }).then((ready) => {
-    if (ready) playButtonSound();
-  });
+  enableGameAudio({ music: false, audibleUnlock: true, feedback: true });
   if (tutorialIndex >= tutorialCards.length - 1) {
     tutorialSeen = true;
     startRun();
@@ -7806,6 +7799,7 @@ function unlockAudioContext({ audible = false } = {}) {
 function startAudio({ music = true, audibleUnlock = false } = {}) {
   return unlockAudioContext({ audible: audibleUnlock }).then((ready) => {
     if (ready && music) startMusic();
+    updateVolumeButtonUi();
     return ready;
   });
 }
@@ -7889,14 +7883,34 @@ function stopMusic() {
   }
 }
 
+function updateVolumeButtonUi() {
+  if (!volumeButton) return;
+  const soundOn = !audioMuted && isAudioRunning();
+  volumeButton.classList.toggle("muted", audioMuted);
+  volumeButton.classList.toggle("sound-ready", soundOn);
+  volumeButton.setAttribute("aria-pressed", soundOn ? "true" : "false");
+  if (volumeButtonLabel) {
+    volumeButtonLabel.textContent = soundOn ? "Sound On" : "Volume";
+  }
+}
+
 function setAudioMuted(muted) {
-  audioMuted = muted;
+  audioMuted = Boolean(muted);
   if (masterGain) {
     masterGain.gain.setTargetAtTime(audioMuted ? 0 : 0.78, audioCtx.currentTime, 0.03);
   }
-  if (volumeButton) {
-    volumeButton.classList.toggle("muted", audioMuted);
-  }
+  updateVolumeButtonUi();
+}
+
+function enableGameAudio({ music = state === "running", audibleUnlock = true, feedback = true } = {}) {
+  setAudioMuted(false);
+  return startAudio({ music, audibleUnlock }).then((ready) => {
+    if (!ready) return false;
+    if (state === "running") applyRunAudioProfile();
+    updateVolumeButtonUi();
+    if (feedback) playButtonSound();
+    return true;
+  });
 }
 
 function playMusicTone(frequency, duration, type = "sine", volume = 0.03, delay = 0) {
@@ -8510,11 +8524,17 @@ bindHoldButton(
   },
 );
 if (volumeButton) {
-  volumeButton.addEventListener("click", () => {
-    startAudio({ music: state === "running", audibleUnlock: true }).then(() => {
-      setAudioMuted(!audioMuted);
-      playButtonSound();
-    });
+  volumeButton.addEventListener("pointerdown", () => {
+    setAudioMuted(false);
+    primeAudioForPlayIntent();
+  }, { passive: true });
+  volumeButton.addEventListener("touchstart", () => {
+    setAudioMuted(false);
+    primeAudioForPlayIntent();
+  }, { passive: true });
+  volumeButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    enableGameAudio({ music: state === "running", audibleUnlock: true, feedback: true });
   });
 }
 if ("serviceWorker" in navigator && window.isSecureContext && location.protocol !== "file:") {
@@ -8524,4 +8544,5 @@ if ("serviceWorker" in navigator && window.isSecureContext && location.protocol 
 }
 updateSymptomSurveyValues();
 updatePowerupUi();
+updateVolumeButtonUi();
 renderProgressGraph();

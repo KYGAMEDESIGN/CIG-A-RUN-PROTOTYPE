@@ -1077,6 +1077,12 @@ button:focus-visible {
   opacity: 0.48;
 }
 
+.mini-menu-button.sound-ready {
+  background: rgba(255, 228, 63, 0.42);
+  color: rgba(20, 17, 14, 0.94);
+  box-shadow: 0 0 16px rgba(255, 218, 55, 0.38);
+}
+
 .mini-menu-button svg {
   width: 18px;
   height: 18px;
