@@ -1,4 +1,4 @@
-const CACHE_NAME = "cig-a-run-pwa-v7";
+const CACHE_NAME = "cig-a-run-pwa-v8";
 const CORE_ASSETS = [
   "./",
   "./index.html",

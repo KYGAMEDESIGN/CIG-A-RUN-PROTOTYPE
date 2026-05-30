@@ -277,6 +277,9 @@ let musicPhraseIndex = 0;
 let audioMuted = false;
 let audioUnlockPromise = null;
 let lastDirectAudioUnlockAt = -999;
+let iosAudioUnlocker = null;
+let iosAudioUnlocked = false;
+let iosSilentAudioSrc = "";
 let resultAnimationToken = 0;
 let tutorialIndex = 0;
 let tutorialSeen = false;
@@ -7742,6 +7745,7 @@ function createAudioGraph() {
   musicGain.connect(masterGain);
   sfxGain.connect(masterGain);
   masterGain.connect(audioCtx.destination);
+  audioCtx.onstatechange = updateVolumeButtonUi;
 }
 
 function isAudioRunning() {
@@ -7751,6 +7755,105 @@ function isAudioRunning() {
 function canPlayAudioNode(targetGain) {
   if (!audioCtx || !targetGain || audioMuted) return false;
   return isAudioRunning();
+}
+
+function isLikelyIosDevice() {
+  const platform = navigator.platform || "";
+  const userAgent = navigator.userAgent || "";
+  return /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function writeWavText(view, offset, text) {
+  for (let i = 0; i < text.length; i += 1) {
+    view.setUint8(offset + i, text.charCodeAt(i));
+  }
+}
+
+function createSilentWavDataUri(sampleRate = 44100) {
+  const sampleCount = 8;
+  const headerSize = 44;
+  const buffer = new ArrayBuffer(headerSize + sampleCount);
+  const view = new DataView(buffer);
+  writeWavText(view, 0, "RIFF");
+  view.setUint32(4, 36 + sampleCount, true);
+  writeWavText(view, 8, "WAVE");
+  writeWavText(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  writeWavText(view, 36, "data");
+  view.setUint32(40, sampleCount, true);
+  for (let i = 0; i < sampleCount; i += 1) {
+    view.setUint8(headerSize + i, 128);
+  }
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `data:audio/wav;base64,${window.btoa(binary)}`;
+}
+
+function getIosAudioUnlocker() {
+  if (!isLikelyIosDevice()) return null;
+  if (iosAudioUnlocker) return iosAudioUnlocker;
+  const sampleRate = audioCtx?.sampleRate || 44100;
+  iosSilentAudioSrc = iosSilentAudioSrc || createSilentWavDataUri(sampleRate);
+  iosAudioUnlocker = document.createElement("audio");
+  iosAudioUnlocker.setAttribute("x-webkit-airplay", "deny");
+  iosAudioUnlocker.setAttribute("playsinline", "");
+  iosAudioUnlocker.preload = "auto";
+  iosAudioUnlocker.loop = true;
+  iosAudioUnlocker.volume = 1;
+  iosAudioUnlocker.src = iosSilentAudioSrc;
+  iosAudioUnlocker.style.display = "none";
+  document.body.appendChild(iosAudioUnlocker);
+  return iosAudioUnlocker;
+}
+
+function primeIosHtmlAudio() {
+  const unlocker = getIosAudioUnlocker();
+  if (!unlocker || iosAudioUnlocked) return;
+  try {
+    unlocker.load();
+    const playPromise = unlocker.play();
+    if (playPromise?.then) {
+      playPromise.then(() => {
+        iosAudioUnlocked = true;
+        updateVolumeButtonUi();
+      }).catch(() => {
+        iosAudioUnlocked = false;
+      });
+    } else {
+      iosAudioUnlocked = true;
+      updateVolumeButtonUi();
+    }
+  } catch (error) {
+    iosAudioUnlocked = false;
+  }
+}
+
+function primeWebAudioBuffer() {
+  if (!audioCtx) return;
+  try {
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioCtx.createBuffer(1, 1, 22050);
+    source.connect(audioCtx.destination);
+    source.start(0);
+    window.setTimeout(() => {
+      try {
+        source.disconnect();
+      } catch (error) {
+        // Safari may already have cleaned up the one-sample unlock node.
+      }
+    }, 80);
+  } catch (error) {
+    // This is only an iOS unlock poke; the regular audio graph still handles playback.
+  }
 }
 
 function playAudioUnlockPulse({ audible = false } = {}) {
@@ -7778,6 +7881,8 @@ function playAudioUnlockPulse({ audible = false } = {}) {
 function unlockAudioContext({ audible = false } = {}) {
   createAudioGraph();
   if (!audioCtx) return Promise.resolve(false);
+  primeIosHtmlAudio();
+  primeWebAudioBuffer();
   if (isAudioRunning()) {
     if (audible) playAudioUnlockPulse({ audible: true });
     return Promise.resolve(true);
@@ -7885,7 +7990,8 @@ function stopMusic() {
 
 function updateVolumeButtonUi() {
   if (!volumeButton) return;
-  const soundOn = !audioMuted && isAudioRunning();
+  const iosBridgeReady = !isLikelyIosDevice() || iosAudioUnlocked;
+  const soundOn = !audioMuted && isAudioRunning() && iosBridgeReady;
   volumeButton.classList.toggle("muted", audioMuted);
   volumeButton.classList.toggle("sound-ready", soundOn);
   volumeButton.setAttribute("aria-pressed", soundOn ? "true" : "false");
@@ -8363,14 +8469,14 @@ function stopAllTouchMovement() {
 }
 
 function primeAudioFromUserGesture() {
-  if (audioMuted || isAudioRunning()) return;
+  if (audioMuted || (isAudioRunning() && (!isLikelyIosDevice() || iosAudioUnlocked))) return;
   startAudio({ music: state === "running", audibleUnlock: false }).then((ready) => {
     if (ready && state === "running") applyRunAudioProfile();
   });
 }
 
 function primeAudioForPlayIntent() {
-  if (audioMuted || isAudioRunning()) return;
+  if (audioMuted || (isAudioRunning() && (!isLikelyIosDevice() || iosAudioUnlocked))) return;
   const now = performance.now();
   if (now - lastDirectAudioUnlockAt < 260) return;
   lastDirectAudioUnlockAt = now;
@@ -8383,9 +8489,10 @@ window.addEventListener("resize", resize);
 window.visualViewport?.addEventListener("resize", resize);
 window.visualViewport?.addEventListener("scroll", resize);
 window.addEventListener("orientationchange", () => window.setTimeout(resize, 80));
-window.addEventListener("pointerdown", primeAudioFromUserGesture, { passive: true });
-window.addEventListener("touchstart", primeAudioFromUserGesture, { passive: true });
-window.addEventListener("touchend", primeAudioFromUserGesture, { passive: true });
+window.addEventListener("pointerdown", primeAudioFromUserGesture, { capture: true, passive: true });
+window.addEventListener("touchstart", primeAudioFromUserGesture, { capture: true, passive: true });
+window.addEventListener("touchend", primeAudioFromUserGesture, { capture: true, passive: true });
+window.addEventListener("click", primeAudioFromUserGesture, { capture: true, passive: true });
 window.addEventListener("keydown", (event) => {
   if ((event.code === "Space" || event.code === "Enter") && (state === "menu" || state === "over")) {
     event.preventDefault();
